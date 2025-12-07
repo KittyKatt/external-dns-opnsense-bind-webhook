@@ -197,13 +197,15 @@ func (c *httpClient) DeleteHostOverride(endpoint *endpoint.Endpoint) error {
 	log.Debugf("delete: Found match %s", lookup.Uuid)
 
 	log.Debugf("delete: Sending POST %s", lookup.Uuid)
-	if _, err = c.doRequest(
+	resp, err := c.doRequest(
 		http.MethodPost,
 		path.Join("settings/delHostOverride", lookup.Uuid),
 		strings.NewReader(emptyJSONObject),
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	return nil
 }
