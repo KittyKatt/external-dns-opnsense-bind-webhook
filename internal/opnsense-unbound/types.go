@@ -15,10 +15,11 @@ type DNSRecord struct {
 	Hostname    string `json:"hostname"`
 	Domain      string `json:"domain"`
 	Rr          string `json:"rr"`
-	Server      string `json:"server"`
+	Server      string `json:"server,omitempty"`
 	Description string `json:"description,omitempty"`
 	Mx          string `json:"mx,omitempty"`
 	MxPrio      string `json:"mxprio,omitempty"`
+	TxtData     string `json:"txtdata,omitempty"`
 }
 
 // unboundRecordsList is the main item returned from the Opnsense Unbound API

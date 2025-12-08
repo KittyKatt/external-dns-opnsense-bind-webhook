@@ -16,9 +16,12 @@ This webhook graciously ~~stolen~~ inspired by [Kashall's Unifi Webhook](https:/
 
 ## 🗒️ Important Notes
 
-As of this writing this webhook only supports creating A records using Unbound's Host Overrides. Theoretically AAAA records should work without much (if any) modification. A/AAAA records work because they effectively map 1:1 with Host Overrides. With significantly more effort, CNAMEs could be supported and mapped to Host Override Aliases, which I may or may not implement.
+As of this writing this webhook supports A, AAAA, and TXT records using Unbound's Host Overrides. A/AAAA/TXT records work because they effectively map 1:1 with Host Overrides.
 
-Furthermore, due to lack of support for TXT records in OPNsense's Unbound API we cannot leverage external-dns' normal `registry` behavior. Using an external registry would be optimal but not required for this webhook to function. Without a valid registry there is no concept of DNS record "ownership". **This means that the webhook will assume ownership of all Host Overrides that match `domainFilters` in Unbound**. There is a DNS pattern that exists to overcome this limitation detailed below.
+With significantly more effort, CNAMEs could be supported and mapped to Host Override Aliases, which may be implemented in the future.
+
+> [!NOTE]
+> TXT record support requires OPNsense >= 25.7 or later versions with TXT record support in Unbound.
 
 ### Structuring Your Unbound Records
 

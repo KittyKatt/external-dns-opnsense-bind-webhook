@@ -112,7 +112,7 @@ func (c *httpClient) doRequest(method, path string, body io.Reader) (*http.Respo
 }
 
 // GetHostOverrides retrieves the list of HostOverrides from the Opnsense Firewall's Unbound API.
-// These are equivalent to A or AAAA records
+// These are equivalent to A, AAAA, or TXT records
 func (c *httpClient) GetHostOverrides() ([]DNSRecord, error) {
 	resp, err := c.doRequest(
 		http.MethodGet,
@@ -131,10 +131,13 @@ func (c *httpClient) GetHostOverrides() ([]DNSRecord, error) {
 
 	log.Debugf("gethost: retrieved records: %+v", records.Rows)
 
+	if records.Rows == nil {
+		return []DNSRecord{}, nil
+	}
 	return records.Rows, nil
 }
 
-// CreateHostOverride creates a new DNS A or AAAA record in the Opnsense Firewall's Unbound API.
+// CreateHostOverride creates a new DNS A, AAAA, or TXT record in the Opnsense Firewall's Unbound API.
 func (c *httpClient) CreateHostOverride(endpoint *endpoint.Endpoint) (*DNSRecord, error) {
 	log.Debugf("create: Try pulling pre-existing Unbound %s record: %s", endpoint.RecordType, endpoint.DNSName)
 	lookup, err := c.lookupHostOverrideIdentifier(endpoint.DNSName, endpoint.RecordType)
@@ -150,14 +153,22 @@ func (c *httpClient) CreateHostOverride(endpoint *endpoint.Endpoint) (*DNSRecord
 
 	splitHost := SplitUnboundFQDN(endpoint.DNSName)
 
+	record := DNSRecord{
+		Enabled:  "1",
+		Rr:       endpoint.RecordType,
+		Hostname: splitHost[0],
+		Domain:   splitHost[1],
+	}
+
+	if endpoint.RecordType == "TXT" {
+		record.TxtData = endpoint.Targets[0]
+	} else {
+		record.Server = endpoint.Targets[0]
+	}
+
 	jsonBody, err := json.Marshal(unboundAddHostOverride{
-		Host: DNSRecord{
-			Enabled:  "1",
-			Rr:       endpoint.RecordType,
-			Server:   endpoint.Targets[0],
-			Hostname: splitHost[0],
-			Domain:   splitHost[1],
-		}})
+		Host: record,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +188,11 @@ func (c *httpClient) CreateHostOverride(endpoint *endpoint.Endpoint) (*DNSRecord
 	// {"result":"failed"}
 	//if resp.Body != nil && resp.Body
 
-	var record unboundAddHostOverride
-	if err = json.NewDecoder(resp.Body).Decode(&record); err != nil {
+	var respRecord unboundAddHostOverride
+	if err = json.NewDecoder(resp.Body).Decode(&respRecord); err != nil {
 		return nil, err
 	}
-	log.Debugf("create: created record: %+v", record)
+	log.Debugf("create: created record: %+v", respRecord)
 
 	return nil, nil
 }
