@@ -28,6 +28,8 @@ func EmbellishUnboundType(unboundType string) string {
 		return unboundType + " (IPv4 address)"
 	case "AAAA":
 		return unboundType + " (IPv6 address)"
+	case "TXT":
+		return unboundType + " (Text record)"
 	}
 	return unboundType
 }
