@@ -45,10 +45,19 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 	var endpoints []*endpoint.Endpoint
 	for _, record := range records {
+		var targets endpoint.Targets
+		recordType := PruneUnboundType(record.Rr)
+
+		if recordType == "TXT" {
+			targets = endpoint.NewTargets(record.TxtData)
+		} else {
+			targets = endpoint.NewTargets(record.Server)
+		}
+
 		ep := &endpoint.Endpoint{
 			DNSName:    JoinUnboundFQDN(record.Hostname, record.Domain),
-			RecordType: PruneUnboundType(record.Rr),
-			Targets:    endpoint.NewTargets(record.Server),
+			RecordType: recordType,
+			Targets:    targets,
 		}
 
 		if !p.domainFilter.Match(ep.DNSName) {
