@@ -2,50 +2,39 @@
 
 <div align="center">
 
-[![GitHub Release](https://img.shields.io/github/v/release/crutonjohn/external-dns-opnsense-webhook?style=for-the-badge)](https://github.com/opnsense/external-dns-opnsense-webhook/releases)&nbsp;&nbsp;
-[![Discord](https://img.shields.io/discord/673534664354430999?style=for-the-badge&label&logo=discord&logoColor=white&color=blue)](https://discord.gg/home-operations)
+[![GitHub Release](https://img.shields.io/github/v/release/KittyKatt/external-dns-opnsense-bind-webhook?style=for-the-badge)](https://github.com/KittyKatt/external-dns-opnsense-bind-webhook/releases)
 
 </div>
 
-This webhook graciously ~~stolen~~ inspired by [Kashall's Unifi Webhook](https://github.com/kashalls/external-dns-unifi-webhook).
+This webhook graciously ~~stolen from~~ inspired by [crutonjohn's OPNSense Unbound Webhook](https://github.com/crutonjohn/external-dns-opnsense-webhook) (which in turn was inspired by [Kashall's Unifi Webhook](https://github.com/kashalls/external-dns-unifi-webhook)).
 
 > [!WARNING]
 > This software is experimental and **NOT FIT FOR PRODUCTION USE!**
 
-[ExternalDNS](https://github.com/kubernetes-sigs/external-dns) is a Kubernetes add-on for automatically managing DNS records for Kubernetes ingresses and services by using different DNS providers. This webhook provider allows you to automate DNS records from your Kubernetes clusters into your OPNsense Firewall's Unbound service.
+[ExternalDNS](https://github.com/kubernetes-sigs/external-dns) is a Kubernetes add-on for automatically managing DNS records for Kubernetes ingresses and services by using different DNS providers. This webhook provider allows you to automate DNS records from your Kubernetes clusters into your OPNsense Firewall's `os-bind` plugin.
 
 ## 🗒️ Important Notes
 
-As of this writing this webhook supports A, AAAA, and TXT records using Unbound's Host Overrides. A/AAAA/TXT records work because they effectively map 1:1 with Host Overrides.
+As of this writing this webhook supports A, AAAA, and absolute FQDN CNAME records using the BIND plugin's API.
 
-With significantly more effort, CNAMEs could be supported and mapped to Host Override Aliases, which may be implemented in the future.
+## 🚫 Limitations
 
-> [!NOTE]
-> TXT record support requires OPNsense >= 25.7 or later versions with TXT record support in Unbound.
+* As mentioned above, with CNAME records this only works when the target of our record is an absolute FQDN. Relative targets like "beep" or "beep.boop" will not work. Future work may make this possible, but right now I haven't figured out how to determine what to do with a relative target and how to handle it.
+* This does not support either TXT or DynamoDB registry.
 
-### Structuring Your Unbound Records
+### A Note About Manually Created Records
 
 > [!WARNING]
-> If you don't follow this **manually entered A/AAAA records can be permanently destroyed**
+> If you don't follow this, **manually entered A/AAAA/CNAME records can be permanently destroyed**
 
-If you have records that are managed manually or by some process other than this webhook and you intend for those records to share a domain, then you must structure them in a way that avoids conflict. The webhook examines all records defined in Host Overrides but does **not** evaluate any Aliases. To avoid ownership conflicts you should create a "stub" Host Override pointing to your intended IP address, then create aliases that use your desired domain.
+If you have records that are managed manually or by some process other than this webhook and you intend for those records to share a domain, then you must use `policy=upsert-only` or `policy=create-only` with your ExternalDNS deployment. If you use `policy=sync`, this will attempt to reconcile the zone by deleting all A/AAAA/CNAME records not currently defined by a supported ExternalDNS source in-cluster.
 
-For example:
+A future iteration of this provider will support TXT registry, which should allow you to use `policy=sync` and only manage records that have corresponding TXT entries representing ownership by this provider.
 
-- You run the webhook with the domain filter set for `example.com`
-- You have manually created a Host Override for `host1.example.com` in OPNSense's Unbound Web UI pointed to `192.168.10.2`.
-
-You will need to:
-- Create a new Host Override with a different domain such as `host1.fake.com` pointing to `192.168.10.2`
-- Create an Alias under `host1.fake.com` that uses the original domain like `host1.example.com`
-
-This effecively protects your record from ownership conflicts while still allowing you to define custom records for a domain used by this webhook. Another option would be to create `dnsendpoint` CRDs for all the records you need in Unbound and let the webhook manage everything.
-
-## 🎯 Requirements
-
+<!-- ## 🎯 Requirements
+# unknown at the moment
 - ExternalDNS >= v0.14.0
-- OPNsense >= 23.7.12_5
-- Unbound >= 1.19.0
+- OPNsense >= 23.7.12_5 -->
 
 ## ⛵ Deployment
 
@@ -54,17 +43,17 @@ This effecively protects your record from ownership conflicts while still allowi
 2. Create an API keypair for the user you created in step 1.
 
 3. Create (or use an existing) group to limit your user's permissions. The known required privileges are:
-- `Services: Unbound DNS: Edit Host and Domain Override`
-- `Services: Unbound (MVC)`
-- `Status: DNS Overview`
 
-4. Add the ExternalDNS Helm repository to your cluster.
+* `Services: BIND`
+* `Status: Services`
+
+1. Add the ExternalDNS Helm repository to your cluster.
 
     ```sh
     helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
     ```
 
-5. Create a Kubernetes secret called `external-dns-opnsense-secret` that holds `api_key` and `api_secret` with their respective values from step 1:
+2. Create a Kubernetes secret called `external-dns-opnsense-secret` that holds `api_key` and `api_secret` with their respective values from step 1:
 
     ```yaml
     apiVersion: v1
@@ -77,7 +66,7 @@ This effecively protects your record from ownership conflicts while still allowi
     type: Opaque
     ```
 
-6. Create the helm values file, for example `external-dns-webhook-values.yaml`:
+3. Create the helm values file, for example `external-dns-webhook-values.yaml`:
 
     ```yaml
     fullnameOverride: external-dns-opnsense
@@ -86,7 +75,7 @@ This effecively protects your record from ownership conflicts while still allowi
       name: webhook
       webhook:
         image:
-          repository: ghcr.io/crutonjohn/external-dns-opnsense-webhook
+          repository: ghcr.io/KittyKatt/external-dns-opnsense-bind-webhook
           tag: main # replace with a versioned release tag
         env:
           - name: OPNSENSE_API_SECRET
@@ -108,13 +97,13 @@ This effecively protects your record from ownership conflicts while still allowi
         livenessProbe:
           httpGet:
             path: /healthz
-            port: http-wh-metrics
+            port: http-webhook`
           initialDelaySeconds: 10
           timeoutSeconds: 5
         readinessProbe:
           httpGet:
             path: /readyz
-            port: http-wh-metrics
+            port: http-webhook`
           initialDelaySeconds: 10
           timeoutSeconds: 5
     extraArgs:
@@ -125,10 +114,10 @@ This effecively protects your record from ownership conflicts while still allowi
     domainFilters: ["example.com"] # replace with your domain
     ```
 
-7. Install the Helm chart
+4. Install the Helm chart
 
     ```sh
-    helm install external-dns-opnsense external-dns/external-dns -f external-dns-opnsense-values yaml --version 1.14.3 -n external-dns
+    helm install external-dns-opnsense external-dns/external-dns -f external-dns-opnsense-values yaml -n external-dns
     ```
 
 ---
@@ -151,11 +140,4 @@ OPNSENSE_HOST=https://192.168.0.1 OPNSENSE_API_SECRET=<secret value> OPNSENSE_AP
 
 ## 🤝 Gratitude and Thanks
 
-Thanks to all the people who donate their time to the [Home Operations](https://discord.gg/home-operations) Discord community.
-
-I'd like to thank the following people for answering my hare-brained questions:
-- @kashalls
-- @onedr0p
-- @uhthomas
-- @tyzbit
-- @buroa
+Thank you to @crutonjohn @kashalls for their wonderful work that allowed me to create this and get it working with minimal effort.

@@ -1,5 +1,5 @@
 FROM golang:1.22-alpine AS builder
-ARG PKG=github.com/crutonjohn/external-dns-opnsense-webhook
+ARG PKG=github.com/KittyKatt/external-dns-opnsense-bind-webhook
 ARG VERSION=dev
 ARG REVISION=dev
 WORKDIR /build
@@ -8,6 +8,6 @@ RUN go build -ldflags "-s -w -X main.Version=${VERSION} -X main.Gitsha=${REVISIO
 
 FROM gcr.io/distroless/static-debian12:nonroot
 USER 8675:8675
-COPY --from=builder --chmod=555 /build/webhook /external-dns-opnsense-webhook
+COPY --from=builder --chmod=555 /build/webhook /external-dns-opnsense-bind-webhook
 EXPOSE 8888/tcp
-ENTRYPOINT ["/external-dns-opnsense-webhook"]
+ENTRYPOINT ["/external-dns-opnsense-bind-webhook"]
