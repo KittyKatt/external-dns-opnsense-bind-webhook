@@ -1,5 +1,7 @@
 ### IntelliJ IDEA ###
 .idea
+### VSCode
+.vscode
 ###
 .private/
 webhook

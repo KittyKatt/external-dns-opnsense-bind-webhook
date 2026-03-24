@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/crutonjohn/external-dns-opnsense-webhook/cmd/webhook/init/configuration"
-	"github.com/crutonjohn/external-dns-opnsense-webhook/pkg/webhook"
+	"github.com/KittyKatt/external-dns-opnsense-bind-webhook/cmd/webhook/init/configuration"
+	"github.com/KittyKatt/external-dns-opnsense-bind-webhook/pkg/webhook"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -51,6 +51,7 @@ func Init(config configuration.Config, p *webhook.Webhook) (*http.Server, *http.
 	healthRouter.Get("/healthz", HealthCheckHandler)
 	healthRouter.Get("/readyz", ReadinessHandler)
 
+        // healthServer = createHTTPServer(fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort), mainRouter, config.ServerReadTimeout, config.ServerWriteTimeout)
 	healthServer := createHTTPServer("0.0.0.0:8080", healthRouter, config.ServerReadTimeout, config.ServerWriteTimeout)
 	go func() {
 		log.Infof("starting health server on addr: '%s' ", healthServer.Addr)

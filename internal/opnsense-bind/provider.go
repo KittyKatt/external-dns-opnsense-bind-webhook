@@ -34,11 +34,11 @@ func NewOpnsenseProvider(domainFilter endpoint.DomainFilter, config *Config) (pr
 	return p, nil
 }
 
-// Records returns the list of HostOverride records in Opnsense Unbound.
+// Records returns the list of records in Opnsense BIND Plugin.
 func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	log.Debugf("records: retrieving records from opnsense")
 
-	records, err := p.client.GetHostOverrides()
+	records, err := p.client.GetRecords()
 	if err != nil {
 		return nil, err
 	}
@@ -46,17 +46,12 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	var endpoints []*endpoint.Endpoint
 	for _, record := range records {
 		var targets endpoint.Targets
-		recordType := PruneUnboundType(record.Rr)
 
-		if recordType == "TXT" {
-			targets = endpoint.NewTargets(record.TxtData)
-		} else {
-			targets = endpoint.NewTargets(record.Server)
-		}
+		targets = endpoint.NewTargets(record.Value)
 
 		ep := &endpoint.Endpoint{
-			DNSName:    JoinUnboundFQDN(record.Hostname, record.Domain),
-			RecordType: recordType,
+			DNSName:    JoinRecordFQDN(record.Name, record.Domain),
+			RecordType: record.Type,
 			Targets:    targets,
 		}
 
@@ -75,18 +70,18 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 // ApplyChanges applies a given set of changes in the DNS provider.
 func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	for _, endpoint := range append(changes.UpdateOld, changes.Delete...) {
-		if err := p.client.DeleteHostOverride(endpoint); err != nil {
+		if err := p.client.DeleteRecord(endpoint); err != nil {
 			return err
 		}
 	}
 
 	for _, endpoint := range append(changes.Create, changes.UpdateNew...) {
-		if _, err := p.client.CreateHostOverride(endpoint); err != nil {
+		if _, err := p.client.CreateRecord(endpoint); err != nil {
 			return err
 		}
 	}
 
-	p.client.ReconfigureUnbound()
+	p.client.ReconfigureBIND()
 
 	return nil
 }

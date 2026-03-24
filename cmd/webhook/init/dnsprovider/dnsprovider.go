@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/KittyKatt/external-dns-opnsense-bind-webhook/cmd/webhook/init/configuration"
+	"github.com/KittyKatt/external-dns-opnsense-bind-webhook/internal/opnsense-bind"
 	"github.com/caarlos0/env/v11"
-	"github.com/crutonjohn/external-dns-opnsense-webhook/cmd/webhook/init/configuration"
-	"github.com/crutonjohn/external-dns-opnsense-webhook/internal/opnsense-unbound"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/provider"
 

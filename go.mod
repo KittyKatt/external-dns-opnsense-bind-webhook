@@ -1,4 +1,4 @@
-module github.com/crutonjohn/external-dns-opnsense-webhook
+module github.com/KittyKatt/external-dns-opnsense-bind-webhook
 
 go 1.22.2
 
