@@ -108,7 +108,7 @@ A future iteration of this provider will support TXT registry, which should allo
           timeoutSeconds: 5
     extraArgs:
       - --ignore-ingress-tls-spec
-    policy: sync
+    policy: upsert-only
     sources: ["ingress", "service", "crd"]
     registry: noop
     domainFilters: ["example.com"] # replace with your domain
