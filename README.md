@@ -15,21 +15,23 @@ This webhook graciously ~~stolen from~~ inspired by [crutonjohn's OPNSense Unbou
 
 ## 🗒️ Important Notes
 
-As of this writing this webhook supports A, AAAA, and absolute FQDN CNAME records using the BIND plugin's API.
+As of this writing this webhook supports A, AAAA, TXT, and absolute FQDN CNAME records using the BIND plugin's API.
+
+Usage of a registry is supported, though only tested with TXT type registry.
 
 ## 🚫 Limitations
 
 * As mentioned above, with CNAME records this only works when the target of our record is an absolute FQDN. Relative targets like "beep" or "beep.boop" will not work. Future work may make this possible, but right now I haven't figured out how to determine what to do with a relative target and how to handle it.
-* This does not support either TXT or DynamoDB registry.
 
 ### A Note About Manually Created Records
 
 > [!WARNING]
 > If you don't follow this, **manually entered A/AAAA/CNAME records can be permanently destroyed**
 
-If you have records that are managed manually or by some process other than this webhook and you intend for those records to share a domain, then you must use `policy=upsert-only` or `policy=create-only` with your ExternalDNS deployment. If you use `policy=sync`, this will attempt to reconcile the zone by deleting all A/AAAA/CNAME records not currently defined by a supported ExternalDNS source in-cluster.
+> [!NOTE]
+> This only applies if you are using `registry=noop` with `policy=sync`. If you plan to use the TXT registry along with `policy=sync`, then this warning should not apply to you as records will be skipped if they are missing the required TXT ownership records.
 
-A future iteration of this provider will support TXT registry, which should allow you to use `policy=sync` and only manage records that have corresponding TXT entries representing ownership by this provider.
+If you have records that are managed manually or by some process other than this webhook and you intend for those records to share a domain, then you must use `policy=upsert-only` or `policy=create-only` with your ExternalDNS deployment. If you use `policy=sync`, this will attempt to reconcile the zone by deleting all A/AAAA/CNAME records not currently defined by a supported ExternalDNS source in-cluster.
 
 <!-- ## 🎯 Requirements
 # unknown at the moment
@@ -108,9 +110,9 @@ A future iteration of this provider will support TXT registry, which should allo
           timeoutSeconds: 5
     extraArgs:
       - --ignore-ingress-tls-spec
-    policy: upsert-only
+    policy: upsert-only # can be upsert-only, create-only, or sync
     sources: ["ingress", "service", "crd"]
-    registry: noop
+    registry: noop # can be noop or txt
     domainFilters: ["example.com"] # replace with your domain
     ```
 

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"slices"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -155,12 +154,6 @@ func (c *httpClient) GetDomains() ([]DNSDomain, error) {
 // GetRecords retrieves the list of records from the Opnsense Firewall's BIND plugin API.
 // These are equivalent to A, AAAA, CNAME, TXT records
 func (c *httpClient) GetRecords() ([]DNSRecord, error) {
-	supportedRecordTypes := []string{
-		endpoint.RecordTypeA,
-		endpoint.RecordTypeAAAA,
-		endpoint.RecordTypeCNAME,
-	}
-
 	resp, err := c.doRequest(
 		http.MethodGet,
 		"record/get",
@@ -182,11 +175,6 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 	for recordUUID, record := range apiRecords.Record.Records.Record {
 		domain := GetSelectedOption(record.Domain)
 		recordType := GetSelectedOption(record.Type)
-
-		// filter out the record types we don't support
-		if !slices.Contains(supportedRecordTypes, recordType.Value) {
-			continue
-		}
 
 		var recordValue string
 		// normalize CNAME values
