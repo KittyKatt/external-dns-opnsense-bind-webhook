@@ -22,6 +22,7 @@ Usage of a registry is supported, though only tested with TXT type registry.
 ## 🚫 Limitations
 
 * As mentioned above, with CNAME records this only works when the target of our record is an absolute FQDN. Relative targets like "beep" or "beep.boop" will not work. Future work may make this possible, but right now I haven't figured out how to determine what to do with a relative target and how to handle it.
+* Wildcard CNAME records are not supported at this time. Attempting to use this provider to create them will result in the ExternalDNS process crashing. I am very welcome to PRs to figure this out.
 
 ### A Note About Manually Created Records
 
@@ -32,6 +33,15 @@ Usage of a registry is supported, though only tested with TXT type registry.
 > This only applies if you are using `registry=noop` with `policy=sync`. If you plan to use the TXT registry along with `policy=sync`, then this warning should not apply to you as records will be skipped if they are missing the required TXT ownership records.
 
 If you have records that are managed manually or by some process other than this webhook and you intend for those records to share a domain, then you must use `policy=upsert-only` or `policy=create-only` with your ExternalDNS deployment. If you use `policy=sync`, this will attempt to reconcile the zone by deleting all A/AAAA/CNAME records not currently defined by a supported ExternalDNS source in-cluster.
+
+### A Note About TXT Registry
+
+> [!WARNING]
+> It is *highly* recommended to set a unique `txtOwnerId` for each ExternalDNS deployment, including this one. Not doing so will result in Bad Situations™ if you attempt to use multiple ExternalDNS providers with the same domains.
+
+The TXT registry is supported with this provider. There is special instructions if you would like to use this provider to manage the apex records of a domain (ie the `@` record for `example.com` in the `example.com` domain). If you would like to do this and use the TXT registry, it is *required* that you use a `txtPrefix` value that ends in a singular period character `.`. Example: `reg-%{record_type}-externaldns.`
+
+Failing to do this will result in this provider crashing ExternalDNS if you attempt to create TXT registry entries for apex records due to it attempting to create TXT records like `a-example.com` rather than `a.example.com`.
 
 <!-- ## 🎯 Requirements
 # unknown at the moment
