@@ -77,7 +77,6 @@ func (c *httpClient) login() error {
 		log.Errorf("login: failed: %s, response: %s", resp.Status, string(respBody))
 		return fmt.Errorf("login: failed: %s", resp.Status)
 	}
-
 	return nil
 }
 
@@ -128,10 +127,9 @@ func (c *httpClient) GetDomains() ([]DNSDomain, error) {
 		return nil, err
 	}
 
-	log.Debugf("get: retrieved domains from API response: %+v", apiDomains)
-
 	domains := make([]DNSDomain, 0, len(apiDomains.Domain.Domains.Domain))
 	for domainUUID, domain := range apiDomains.Domain.Domains.Domain {
+		log.Debugf("lookupDomain: Found domain: (name: %s) (id: %s) (type: %s) (enabled: %s)", domain.Name, domainUUID, domain.Type, domain.Enabled)
 		domainType := GetSelectedOption(domain.Type)
 
 		dnsDomain := DNSDomain{
@@ -169,8 +167,6 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 		return nil, err
 	}
 
-	log.Debugf("get: retrieved records from API response: %+v", apiRecords)
-
 	records := make([]DNSRecord, 0, len(apiRecords.Record.Records.Record))
 	for recordUUID, record := range apiRecords.Record.Records.Record {
 		domain := GetSelectedOption(record.Domain)
@@ -182,6 +178,10 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 			recordValue = strings.TrimSuffix(record.Value, ".")
 		} else {
 			recordValue = record.Value
+		}
+
+		if recordValue == domain.Value {
+			recordValue = "@"
 		}
 
 		dnsRecord := DNSRecord{
@@ -205,9 +205,9 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 }
 
 // CreateRecord creates a new DNS A, AAAA, CNAME, TXT record in the Opnsense Firewall's BIND Plugin API.
-func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint) (*DNSRecord, error) {
+func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endpoint.DomainFilter) (*DNSRecord, error) {
 	log.Debugf("create: Try pulling pre-existing BIND %s record: %s", endpoint.RecordType, endpoint.DNSName)
-	lookup, err := c.lookupRecord(endpoint.DNSName, endpoint.RecordType)
+	lookup, err := c.lookupRecord(endpoint.DNSName, endpoint.RecordType, domainFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -218,24 +218,36 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint) (*DNSRecord, erro
 		return lookup, nil
 	}
 
-	splitHost := SplitRecordFQDN(endpoint.DNSName)
-	domain, err := c.lookupDomain(splitHost[1])
+	domain, err := c.lookupDomain(endpoint.DNSName, domainFilter)
 	if err != nil {
 		return nil, err
 	}
 
 	// Add trailing dot to CNAME records
 	var endpointTarget string
+	var recordName string
 	if endpoint.RecordType == "CNAME" {
 		endpointTarget = endpoint.Targets[0] + "."
+		if endpoint.DNSName == domain.Name {
+			recordName = "@"
+		} else {
+			recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
+		}
+	} else if endpoint.RecordType == "TXT" {
+		endpointTarget = endpoint.Targets[0]
+
+		recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
 	} else {
 		endpointTarget = endpoint.Targets[0]
+		recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
 	}
+
+	recordName = strings.TrimSuffix(recordName, ".")
 
 	record := APINewDNSRecord{
 		Record: APINewDNSRecordInner{
 			Type:   endpoint.RecordType,
-			Name:   splitHost[0],
+			Name:   recordName,
 			Domain: domain.Id,
 			Value:  endpointTarget,
 		},
@@ -272,9 +284,9 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint) (*DNSRecord, erro
 }
 
 // DeleteRecord deletes a DNS record from the Opnsense Firewall's BIND Plugin API.
-func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint) error {
+func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint, domainFilter endpoint.DomainFilter) error {
 	log.Debugf("delete: Deleting record %+v", endpoint)
-	lookup, err := c.lookupRecord(endpoint.DNSName, endpoint.RecordType)
+	lookup, err := c.lookupRecord(endpoint.DNSName, endpoint.RecordType, domainFilter)
 	if err != nil {
 		return err
 	}
@@ -296,47 +308,83 @@ func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint) error {
 }
 
 // lookupDomain finds a Domain in the Opnsense Firewall's BIND Plugin API.
-func (c *httpClient) lookupDomain(key string) (*DNSDomain, error) {
+func (c *httpClient) lookupDomain(key string, domainFilter endpoint.DomainFilter) (*DNSDomain, error) {
 	domains, err := c.GetDomains()
 	if err != nil {
 		return nil, err
 	}
 
+	if key == "" {
+		log.Debug("a domain cannot be empty")
+		return nil, fmt.Errorf("a domain cannot be empty")
+	}
+
+	if len(key) > 253 {
+		log.Debugf("invalid domain, length exceeds 253 characters: %s", key)
+		return nil, fmt.Errorf("invalid domain, length exceeds 253 characters")
+	}
+
+	dnsName := strings.TrimSpace(strings.ToLower(key))
+	hostParts := strings.Split(dnsName, ".")
+
+	if len(hostParts) == 1 {
+		log.Errorf("dns name is TLD or invalid format: %s", dnsName)
+		return nil, fmt.Errorf("dns name is TLD or invalid format: %s", dnsName)
+	}
+
+	var domainName string
 	var domain DNSDomain
 	longestSuffix := ""
+	for i := 0; i < len(hostParts); i++ {
+		domainName := strings.Join(hostParts[i:], ".")
+		log.Debugf("lookupDomain: Looking for domain matching string: %s", domainName)
 	for _, d := range domains {
-		log.Debugf("lookup: Checking Domain: Name=%s, Type=%s, ID=%s\n", d.Name, d.Type, d.Id)
-		if len(d.Name) > len(longestSuffix) && strings.HasSuffix(key, d.Name) {
-			log.Debugf("lookup: UUID Match Found: %s", d.Id)
+			log.Debugf("lookupDomain: Checking Domain: Name=%s, Type=%s, ID=%s", d.Name, d.Type, d.Id)
+			if len(d.Name) > len(longestSuffix) && domainName == d.Name {
+				log.Debugf("lookupDomain: Match Found!  %s", d.Id)
 			longestSuffix = d.Name
 			domain = d
+			}
+		}
+		if longestSuffix != "" {
+			break
 		}
 	}
 
 	if longestSuffix != "" {
 		return &domain, nil
 	}
-	log.Debugf("lookup: No matching domain found for Name=%s", key)
+
+	log.Debugf("lookup: No matching domain found for Name=%s", domainName)
 	return nil, nil
 }
 
 // lookupRecord finds a HostOverride in the Opnsense Firewall's BIND Plugin API.
-func (c *httpClient) lookupRecord(key, recordType string) (*DNSRecord, error) {
+func (c *httpClient) lookupRecord(key, recordType string, domainFilter endpoint.DomainFilter) (*DNSRecord, error) {
+	log.Debugf("lookup: debug: incoming key: %s", key)
 	records, err := c.GetRecords()
 	if err != nil {
 		return nil, err
 	}
+	domain, err := c.lookupDomain(key, domainFilter)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Debug("lookup: Splitting FQDN")
-	splitHost := SplitRecordFQDN(key)
+	hostName := strings.TrimSuffix(key, domain.Name)
 
 	for _, r := range records {
-		log.Debugf("lookup: Checking record: Host=%s, Domain=%s, Type=%s, ID=%s\n", r.Name, r.Domain, r.Type, r.Id)
-		if r.Name == splitHost[0] && r.Domain == splitHost[1] && r.Type == recordType {
+		log.Debugf("lookup: Checking record: Host=%s, Domain=%s, Type=%s, ID=%s", r.Name, r.Domain, r.Type, r.Id)
+		if r.Name == "@" && r.Domain == key && r.Type == recordType {
+			log.Debugf("lookup: found root level UUID match: %s", r.Id)
+			return &r, nil
+		} else if r.Name == hostName && r.Domain == domain.Name && r.Type == recordType {
 			log.Debugf("lookup: UUID Match Found: %s", r.Id)
 			return &r, nil
 		}
 	}
-	log.Debugf("lookup: No matching record found for Host=%s, Domain=%s, Type=%s\n", splitHost[0], splitHost[1], recordType)
+	log.Debugf("lookup: No matching record found for Host=%s, Domain=%s, Type=%s", hostName, domain.Name, recordType)
 	return nil, nil
 }
 

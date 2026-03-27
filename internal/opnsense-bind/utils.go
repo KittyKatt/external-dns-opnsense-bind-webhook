@@ -1,6 +1,8 @@
 package opnsense
 
-import "strings"
+import (
+	"strings"
+)
 
 // RecordFQDNSplitter splits a hostname into two parts,
 // [0] Being the top level hostname
