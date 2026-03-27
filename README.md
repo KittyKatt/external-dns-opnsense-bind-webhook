@@ -120,10 +120,12 @@ Failing to do this will result in this provider crashing ExternalDNS if you atte
           timeoutSeconds: 5
     extraArgs:
       - --ignore-ingress-tls-spec
-    policy: upsert-only # can be upsert-only, create-only, or sync
+    policy: sync # can be upsert-only, create-only, or sync
     sources: ["ingress", "service", "crd"]
-    registry: noop # can be noop or txt
+    registry: txt # can be noop or txt
     domainFilters: ["example.com"] # replace with your domain
+    txtPrefix: reg-%{record_type}-externaldns.
+    txtOwnerId: opnsense-bind
     ```
 
 4. Install the Helm chart
