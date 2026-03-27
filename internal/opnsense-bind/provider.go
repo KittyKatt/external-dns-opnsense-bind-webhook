@@ -45,6 +45,10 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 	var endpoints []*endpoint.Endpoint
 	for _, record := range records {
+		if !p.domainFilter.MatchParent(record.Name) {
+			continue
+		}
+		log.Debugf("record found (name: %s) (domain: %s) (type: %s) (value: %s)", record.Name, record.Domain, record.Type, record.Value)
 		var targets endpoint.Targets
 
 		targets = endpoint.NewTargets(record.Value)
@@ -55,14 +59,10 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 			Targets:    targets,
 		}
 
-		if !p.domainFilter.Match(ep.DNSName) {
-			continue
-		}
+		log.Debugf("endpoints: endpoint built: (name: %s)", ep.DNSName)
 
 		endpoints = append(endpoints, ep)
 	}
-
-	log.Debugf("records: retrieved: %+v", endpoints)
 
 	return endpoints, nil
 }
@@ -70,13 +70,15 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 // ApplyChanges applies a given set of changes in the DNS provider.
 func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	for _, endpoint := range append(changes.UpdateOld, changes.Delete...) {
-		if err := p.client.DeleteRecord(endpoint); err != nil {
+		log.Debugf("delete: endpoint name to delete: %s", endpoint.DNSName)
+		if err := p.client.DeleteRecord(endpoint, p.domainFilter); err != nil {
 			return err
 		}
 	}
 
 	for _, endpoint := range append(changes.Create, changes.UpdateNew...) {
-		if _, err := p.client.CreateRecord(endpoint); err != nil {
+		log.Debugf("create: endpoint name to create: %s", endpoint.DNSName)
+		if _, err := p.client.CreateRecord(endpoint, p.domainFilter); err != nil {
 			return err
 		}
 	}
