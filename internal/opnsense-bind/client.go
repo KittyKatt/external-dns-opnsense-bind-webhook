@@ -18,6 +18,16 @@ import (
 
 const emptyJSONObject = "{}"
 
+var (
+	supportedTypes =  map[string]bool{
+		"A":     true,
+		"AAAA":  true,
+		"CNAME": true,
+		"TXT":   true,
+		"SRV":   true,
+	}
+)
+
 // httpClient is the DNS provider client.
 type httpClient struct {
 	*Config
@@ -171,6 +181,10 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 	for recordUUID, record := range apiRecords.Record.Records.Record {
 		domain := GetSelectedOption(record.Domain)
 		recordType := GetSelectedOption(record.Type)
+
+        if !supportedTypes[recordType.Value] {
+            continue
+        }
 
 		var recordValue string
 		// normalize CNAME values
