@@ -258,6 +258,18 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 		return nil, err
 	}
 
+	if c.DryRun {
+		log.Infof("[DRY RUN] ACTION: CREATE")
+		log.Infof("[DRY RUN] Target URL: %s/record/add_record", c.baseURL.String())
+		log.Infof("[DRY RUN] Payload: %s", string(jsonBody))
+		
+		return &DNSRecord{
+			Name:   record.Record.Name,
+			Type:   endpoint.RecordType,
+			Value:  record.Record.Value,
+		}, nil
+	}
+
 	log.Debugf("create: POST: %s", string(jsonBody))
 	resp, err := c.doRequest(
 		http.MethodPost,
@@ -289,6 +301,13 @@ func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint, domainFilter endp
 	lookup, err := c.lookupRecord(endpoint.DNSName, endpoint.RecordType, domainFilter)
 	if err != nil {
 		return err
+	}
+
+	if c.DryRun {
+		log.Infof("[DRY RUN] ACTION: DELETE")
+		log.Infof("[DRY RUN] Target URL: %s/record/del_record/%s", c.baseURL.String(), lookup.Id)
+		log.Infof("[DRY RUN] Payload: %s", emptyJSONObject)
+		return nil
 	}
 
 	log.Debugf("delete: Found match %s", lookup.Id)

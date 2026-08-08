@@ -6,6 +6,7 @@ type Config struct {
 	Key           string `env:"OPNSENSE_API_KEY,notEmpty"`
 	Secret        string `env:"OPNSENSE_API_SECRET,notEmpty"`
 	SkipTLSVerify bool   `env:"OPNSENSE_SKIP_TLS_VERIFY" envDefault:"true"`
+	DryRun        bool   `env:"DNS_DRY_RUN" envDefault:"false"` 
 	// TODO: Figure out automatic PTR creation
 	// CreatePTRRecords bool   `env:"OPNSENSE_CREATE_PTR" envDefault:"false"`
 }
