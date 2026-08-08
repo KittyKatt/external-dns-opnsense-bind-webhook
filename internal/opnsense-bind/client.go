@@ -208,14 +208,14 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 			Value:      recordValue,
 		}
 
+		if dnsRecord.Name == "" {
+			dnsRecord.Name = "@"
+		}
+
 		records = append(records, dnsRecord)
 	}
 
-	if records == nil {
-		return []DNSRecord{}, nil
-	} else {
 		return records, nil
-	}
 }
 
 // CreateRecord creates a new DNS A, AAAA, CNAME, TXT record in the Opnsense Firewall's BIND Plugin API.
@@ -240,20 +240,19 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 	// Add trailing dot to CNAME records
 	var endpointTarget string
 	var recordName string
-	if endpoint.RecordType == "CNAME" {
-		endpointTarget = endpoint.Targets[0] + "."
+
+	suffix := strings.TrimSuffix(endpoint.DNSName, domain.Name)
+	suffix = strings.TrimSuffix(suffix, ".")
+
 		if endpoint.DNSName == domain.Name {
 			recordName = "@"
 		} else {
-			recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
+		recordName = suffix
 		}
-	} else if endpoint.RecordType == "TXT" {
-		endpointTarget = endpoint.Targets[0]
 
-		recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
-	} else {
 		endpointTarget = endpoint.Targets[0]
-		recordName = strings.TrimSuffix(endpoint.DNSName, domain.Name)
+	if endpoint.RecordType == "CNAME" {
+		endpointTarget += "."
 	}
 
 	recordName = strings.TrimSuffix(recordName, ".")
@@ -306,7 +305,13 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 
 	log.Debugf("create: created record: %+v", respRecord)
 
-	return nil, nil
+	return &DNSRecord{
+		Id:     respRecord.UUID,
+		Name:   recordName,
+		Domain: domain.Name,
+		Type:   endpoint.RecordType,
+		Value:  endpointTarget,
+	}, nil
 }
 
 // DeleteRecord deletes a DNS record from the Opnsense Firewall's BIND Plugin API.
@@ -357,35 +362,24 @@ func (c *httpClient) lookupDomain(key string, domainFilter endpoint.DomainFilter
 		return nil, fmt.Errorf("invalid domain, length exceeds 253 characters")
 	}
 
+	domainMap := make(map[string]DNSDomain)
+	for _, d := range domains {
+		domainMap[d.Name] = d
+	}
+
 	dnsName := strings.TrimSpace(strings.ToLower(key))
 	hostParts := strings.Split(dnsName, ".")
 
-	if len(hostParts) == 1 {
-		log.Errorf("dns name is TLD or invalid format: %s", dnsName)
+	if len(hostParts) <= 1 {
 		return nil, fmt.Errorf("dns name is TLD or invalid format: %s", dnsName)
 	}
 
-	var domainName string
-	var domain DNSDomain
-	longestSuffix := ""
 	for i := 0; i < len(hostParts); i++ {
-		domainName := strings.Join(hostParts[i:], ".")
-		log.Debugf("lookupDomain: Looking for domain matching string: %s", domainName)
-	for _, d := range domains {
-			log.Debugf("lookupDomain: Checking Domain: Name=%s, Type=%s, ID=%s", d.Name, d.Type, d.Id)
-			if len(d.Name) > len(longestSuffix) && domainName == d.Name {
-				log.Debugf("lookupDomain: Match Found!  %s", d.Id)
-			longestSuffix = d.Name
-			domain = d
-			}
+		suffix := strings.Join(hostParts[i:], ".")
+		if d, ok := domainMap[suffix]; ok {
+			log.Debugf("lookupDomain: Match Found! %s", d.Id)
+			return &d, nil
 		}
-		if longestSuffix != "" {
-			break
-		}
-	}
-
-	if longestSuffix != "" {
-		return &domain, nil
 	}
 
 	log.Debugf("lookup: No matching domain found for Name=%s", domainName)
@@ -406,14 +400,16 @@ func (c *httpClient) lookupRecord(key, recordType string, domainFilter endpoint.
 
 	log.Debug("lookup: Splitting FQDN")
 	hostName := strings.TrimSuffix(key, domain.Name)
+	hostName = strings.TrimSuffix(hostName, ".")
 
 	for _, r := range records {
-		log.Debugf("lookup: Checking record: Host=%s, Domain=%s, Type=%s, ID=%s", r.Name, r.Domain, r.Type, r.Id)
-		if r.Name == "@" && r.Domain == key && r.Type == recordType {
-			log.Debugf("lookup: found root level UUID match: %s", r.Id)
+		// Match root level (@)
+		isRoot := (r.Name == "@" || r.Name == "") && (r.Domain == key)
+		if isRoot && r.Type == recordType {
 			return &r, nil
-		} else if r.Name == hostName && r.Domain == domain.Name && r.Type == recordType {
-			log.Debugf("lookup: UUID Match Found: %s", r.Id)
+		} 
+		// Match subdomain
+		if hostName != "" && r.Name == hostName && r.Domain == domain.Name && r.Type == recordType {
 			return &r, nil
 		}
 	}
