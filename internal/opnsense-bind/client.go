@@ -19,6 +19,7 @@ import (
 const emptyJSONObject = "{}"
 
 var (
+	ErrNoChangeNeeded = fmt.Errorf("no change needed")
 	supportedTypes =  map[string]bool{
 		"A":     true,
 		"AAAA":  true,
@@ -215,7 +216,7 @@ func (c *httpClient) GetRecords() ([]DNSRecord, error) {
 		records = append(records, dnsRecord)
 	}
 
-		return records, nil
+	return records, nil
 }
 
 // CreateRecord creates a new DNS A, AAAA, CNAME, TXT record in the Opnsense Firewall's BIND Plugin API.
@@ -228,8 +229,11 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 
 	if lookup != nil {
 		log.Debugf("create: Found uuid: %s", lookup.Id)
-		log.Debugf("create: Found existing %s record for %s : %s", endpoint.RecordType, endpoint.DNSName, lookup.Id)
-		return lookup, nil
+		if lookup.Value == endpoint.Targets[0] {
+			log.Debugf("create: Found existing %s record for %s with matching value %s. No changes needed.", endpoint.RecordType, endpoint.DNSName, lookup.Id)
+			return nil, ErrNoChangeNeeded
+		}
+		return nil, fmt.Errorf("record exists with different value: current=%s, new=%s", lookup.Value, endpoint.Targets[0])
 	}
 
 	domain, err := c.lookupDomain(endpoint.DNSName, domainFilter)
@@ -244,13 +248,13 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 	suffix := strings.TrimSuffix(endpoint.DNSName, domain.Name)
 	suffix = strings.TrimSuffix(suffix, ".")
 
-		if endpoint.DNSName == domain.Name {
-			recordName = "@"
-		} else {
+	if endpoint.DNSName == domain.Name {
+		recordName = "@"
+	} else {
 		recordName = suffix
-		}
+	}
 
-		endpointTarget = endpoint.Targets[0]
+	endpointTarget = endpoint.Targets[0]
 	if endpoint.RecordType == "CNAME" {
 		endpointTarget += "."
 	}
@@ -322,6 +326,11 @@ func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint, domainFilter endp
 		return err
 	}
 
+	if lookup == nil {
+		log.Debugf("delete: No matching record found to delete for %s", endpoint.DNSName)
+		return nil
+	}
+
 	if c.DryRun {
 		log.Infof("[DRY RUN] ACTION: DELETE")
 		log.Infof("[DRY RUN] Target URL: %s/record/del_record/%s", c.baseURL.String(), lookup.Id)
@@ -382,7 +391,7 @@ func (c *httpClient) lookupDomain(key string, domainFilter endpoint.DomainFilter
 		}
 	}
 
-	log.Debugf("lookup: No matching domain found for Name=%s", domainName)
+	log.Debugf("lookup: No matching domain found for Name=%s", dnsName)
 	return nil, nil
 }
 
@@ -402,7 +411,7 @@ func (c *httpClient) lookupRecord(key, recordType string, domainFilter endpoint.
 	hostName := strings.TrimSuffix(key, domain.Name)
 	hostName = strings.TrimSuffix(hostName, ".")
 
-	for _, r := range records {
+	for _, r := range records {		
 		// Match root level (@)
 		isRoot := (r.Name == "@" || r.Name == "") && (r.Domain == key)
 		if isRoot && r.Type == recordType {
@@ -453,3 +462,23 @@ func (c *httpClient) setHeaders(req *http.Request) {
 	// Log the request URL
 	log.Debugf("headers: Requesting %s", req.URL)
 }
+
+// func (c *httpClient) GetProviderSpecificValueOrDefault(ep *endpoint.Endpoint, key string, defaultValue string) string {
+// 	// try provider specific key literal
+// 	value, exists := ep.GetProviderSpecificProperty(key)
+// 	if exists && value != "" {
+// 		log.Debugf("provider specific '%s' found. Value: %s", key, value)
+// 		return value
+// 	}
+
+// 	// try provider specific webhook/{key}
+// 	value, exists = ep.GetProviderSpecificProperty(fmt.Sprintf("webhook/%s", key))
+// 	if exists && value != "" {
+// 		log.Debugf("provider specific 'webhook/%s' found. Value: %s", key, value)
+// 		return value
+// 	}
+
+// 	// return default if nothing found
+// 	log.Debugf("provider specific key '%s' not found, default value returned: %s", key, defaultValue)
+// 	return defaultValue
+// }
