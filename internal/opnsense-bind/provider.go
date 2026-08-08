@@ -2,7 +2,9 @@ package opnsense
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -81,21 +83,47 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 // ApplyChanges applies a given set of changes in the DNS provider.
 func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	var errs []error
+	changed := false
+
+	// 1. Handle Deletions
 	for _, endpoint := range append(changes.UpdateOld, changes.Delete...) {
 		log.Debugf("delete: endpoint name to delete: %s", endpoint.DNSName)
 		if err := p.client.DeleteRecord(endpoint, p.domainFilter); err != nil {
-			return err
+			log.Errorf("delete error for %s: %v", endpoint.DNSName, err)
+			errs = append(errs, fmt.Errorf("delete %s: %w", endpoint.DNSName, err))
+		} else {
+			changed = true
 		}
 	}
 
+	// 2. Handle Creations/Updates
 	for _, endpoint := range append(changes.Create, changes.UpdateNew...) {
 		log.Debugf("create: endpoint name to create: %s", endpoint.DNSName)
 		if _, err := p.client.CreateRecord(endpoint, p.domainFilter); err != nil {
-			return err
+			if err == ErrNoChangeNeeded {
+				continue
+			}
+			log.Errorf("create error for %s: %v", endpoint.DNSName, err)
+			errs = append(errs, fmt.Errorf("create %s: %w", endpoint.DNSName, err))
+		} else {
+			changed = true
 		}
 	}
 
-	p.client.ReconfigureBIND()
+	// 3. Reconfigure BIND (Only if we didn't have massive failures, or always)
+	if len(errs) == 0 && changed {
+		if err := p.client.ReconfigureBIND(); err != nil {
+			errs = append(errs, fmt.Errorf("reconfigure: %w", err))
+		}
+	} else {
+		log.Debugf("skipping reconfigure because %d errors occurred", len(errs))
+	}
+
+	// 4. Return all errors at once
+	if len(errs) > 0 {
+		return fmt.Errorf("apply changes failed with %d errors: %v", len(errs), errors.Join(errs...))
+	}
 
 	return nil
 }
