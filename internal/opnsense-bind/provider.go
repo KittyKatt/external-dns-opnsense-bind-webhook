@@ -45,16 +45,28 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 	var endpoints []*endpoint.Endpoint
 	for _, record := range records {
-		if !p.domainFilter.MatchParent(record.Name) {
+		cleanName := strings.TrimSpace(record.Name)
+		if cleanName == "" {
+			cleanName = "@"
+		}
+
+		if !p.domainFilter.MatchParent(cleanName) {
 			continue
 		}
-		log.Debugf("record found (name: %s) (domain: %s) (type: %s) (value: %s)", record.Name, record.Domain, record.Type, record.Value)
+		log.Debugf("record found (name: %s) (domain: %s) (type: %s) (value: %s)", cleanName, record.Domain, record.Type, record.Value)
 		var targets endpoint.Targets
 
 		targets = endpoint.NewTargets(record.Value)
 
+		var dnsName string
+		if cleanName == "@" {
+			dnsName = record.Domain
+		} else {
+			dnsName = JoinRecordFQDN(cleanName, record.Domain)
+		}
+
 		ep := &endpoint.Endpoint{
-			DNSName:    JoinRecordFQDN(record.Name, record.Domain),
+			DNSName:    dnsName,
 			RecordType: record.Type,
 			Targets:    targets,
 		}
