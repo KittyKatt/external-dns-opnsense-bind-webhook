@@ -1,5 +1,4 @@
 FROM golang:1.22-alpine AS builder
-ARG PKG=github.com/KittyKatt/external-dns-opnsense-bind-webhook
 ARG VERSION=dev
 ARG REVISION=dev
 WORKDIR /build
