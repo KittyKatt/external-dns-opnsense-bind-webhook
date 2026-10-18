@@ -1,0 +1,5 @@
+.git
+.private
+webhook
+*.log
+.DS_Store
