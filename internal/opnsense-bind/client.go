@@ -161,7 +161,7 @@ func (c *httpClient) GetDomains() ([]DNSDomain, error) {
 
 	domains := make([]DNSDomain, 0, len(apiDomains.Domain.Domains.Domain))
 	for domainUUID, domain := range apiDomains.Domain.Domains.Domain {
-		log.Debugf("lookupDomain: Found domain: (name: %s) (id: %s) (type: %s) (enabled: %s)", domain.Name, domainUUID, domain.Type, domain.Enabled)
+		log.Debugf("lookupDomain: Found domain: (name: %s) (id: %s) (type: %v) (enabled: %s)", domain.Name, domainUUID, domain.Type, domain.Enabled)
 		domainType := GetSelectedOption(domain.Type)
 
 		dnsDomain := DNSDomain{
