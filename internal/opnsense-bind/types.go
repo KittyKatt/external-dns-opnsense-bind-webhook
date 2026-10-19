@@ -97,10 +97,3 @@ type APIDomain struct {
 	Name    string                     `json:"domainname"`
 	Type    map[string]APISelectOption `json:"type"`
 }
-
-// APIAddRecordResponse represents the structure of a response from the
-// OPNSense BIND Plugin API when adding a record.
-type APIAddRecordResponse struct {
-	Result string `json:"result"`
-	UUID   string `json:"uuid"`
-}
