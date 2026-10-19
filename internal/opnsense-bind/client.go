@@ -29,6 +29,27 @@ var (
 	}
 )
 
+// opnsenseResult is the response envelope returned by OPNsense BIND plugin
+// POST endpoints (add_record, del_record, reconfigure, ...).
+type opnsenseResult struct {
+	Result  string `json:"result"`
+	UUID    string `json:"uuid"`
+	Message string `json:"message"`
+}
+
+// validateResult turns an OPNsense POST response into an error when the
+// operation itself was rejected. A 200 status is not enough on its own:
+// the firewall accepts the request and can still return result:"failed".
+func validateResult(r opnsenseResult, op string) error {
+	if r.Result != "success" {
+		if r.Message != "" {
+			return fmt.Errorf("%s: opnsense rejected the operation: %s", op, r.Message)
+		}
+		return fmt.Errorf("%s: opnsense rejected the operation (result=%q)", op, r.Result)
+	}
+	return nil
+}
+
 // httpClient is the DNS provider client.
 type httpClient struct {
 	*Config
@@ -298,13 +319,16 @@ func (c *httpClient) CreateRecord(endpoint *endpoint.Endpoint, domainFilter endp
 	}
 	defer resp.Body.Close()
 
-	// TODO: Better error handling if API returns:
-	// {"result":"failed"}
-	//if resp.Body != nil && resp.Body
-
-	var respRecord APIAddRecordResponse
+	var respRecord opnsenseResult
 	if err = json.NewDecoder(resp.Body).Decode(&respRecord); err != nil {
 		return nil, err
+	}
+
+	if err := validateResult(respRecord, "create record"); err != nil {
+		return nil, err
+	}
+	if respRecord.UUID == "" {
+		return nil, fmt.Errorf("create record: opnsense did not return a uuid")
 	}
 
 	log.Debugf("create: created record: %+v", respRecord)
@@ -351,7 +375,12 @@ func (c *httpClient) DeleteRecord(endpoint *endpoint.Endpoint, domainFilter endp
 	}
 	defer resp.Body.Close()
 
-	return nil
+	var respRecord opnsenseResult
+	if err = json.NewDecoder(resp.Body).Decode(&respRecord); err != nil {
+		return err
+	}
+
+	return validateResult(respRecord, "delete record")
 }
 
 // lookupDomain finds a Domain in the Opnsense Firewall's BIND Plugin API.
@@ -440,14 +469,12 @@ func (c *httpClient) ReconfigureBIND() error {
 
 	defer resp.Body.Close()
 
-	// Check if the login was successful
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		log.Errorf("reconfigure: login failed: %s, response: %s", resp.Status, string(respBody))
-		return fmt.Errorf("reconfigure: BIND failed: %s", resp.Status)
+	var respRecord opnsenseResult
+	if err = json.NewDecoder(resp.Body).Decode(&respRecord); err != nil {
+		return err
 	}
 
-	return nil
+	return validateResult(respRecord, "reconfigure")
 }
 
 // setHeaders sets the headers for the HTTP request.
